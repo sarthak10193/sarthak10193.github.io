@@ -1,0 +1,116 @@
+---
+title: "Post Template: Formulas, Code, and Images"
+description: "A reference template showing how to use math, code blocks, images, and callouts in your blog."
+date: "2026-01-01"
+categories: [Template]
+draft: true          # ← Set to false when ready to publish
+toc: true
+---
+
+> This is a **draft template** — set `draft: false` in the front matter to publish it.
+
+## Inline and Block Math
+
+Inline formula: the attention score is $a_{ij} = \text{softmax}\!\left(\frac{q_i k_j^T}{\sqrt{d_k}}\right)$.
+
+Block formula (KaTeX renders it beautifully):
+
+$$
+\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^T}{\sqrt{d_k}}\right)V
+$$
+
+Multi-line with alignment:
+
+$$
+\begin{aligned}
+\mu &= \frac{1}{N}\sum_{i=1}^N x_i \\
+\sigma^2 &= \frac{1}{N}\sum_{i=1}^N (x_i - \mu)^2
+\end{aligned}
+$$
+
+## Code Blocks
+
+Python with syntax highlighting:
+
+```python
+import torch
+import torch.nn.functional as F
+
+def scaled_dot_product_attention(q, k, v, mask=None):
+    d_k = q.size(-1)
+    scores = torch.matmul(q, k.transpose(-2, -1)) / d_k ** 0.5
+    if mask is not None:
+        scores = scores.masked_fill(mask == 0, float('-inf'))
+    weights = F.softmax(scores, dim=-1)
+    return torch.matmul(weights, v)
+```
+
+CUDA C++:
+
+```cuda
+__global__ void softmax_kernel(float* x, float* out, int N) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < N) {
+        // ... reduction over shared memory
+    }
+}
+```
+
+## Images
+
+```markdown
+![Caption for your image](images/your_image.png){width=80%}
+```
+
+Or with a figure number:
+
+```markdown
+::: {#fig-arch}
+![](images/architecture.png)
+
+Figure: Transformer architecture overview.
+:::
+```
+
+## Callouts
+
+::: {.callout-tip}
+Use callouts to highlight key insights.
+:::
+
+::: {.callout-warning}
+Warn readers about common gotchas.
+:::
+
+::: {.callout-note}
+Add extra context that doesn't fit in the main flow.
+:::
+
+## Tables
+
+| Method | Memory (GB) | Throughput (tok/s) |
+|---|---|---|
+| FP32 | 28 | 120 |
+| BF16 | 14 | 240 |
+| INT8 | 7 | 380 |
+
+## Jupyter Notebook Posts
+
+To use a `.ipynb` as a blog post directly, place it in a post folder:
+
+```
+posts/
+  my-notebook-post/
+    index.ipynb        ← Quarto renders this automatically
+    images/
+```
+
+The notebook's cells become the post. Add this to the first cell (Raw type):
+
+```yaml
+---
+title: "My Notebook Post"
+date: "2026-01-01"
+categories: [CUDA, Python]
+---
+```

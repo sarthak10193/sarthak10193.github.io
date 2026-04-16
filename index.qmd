@@ -1,0 +1,14 @@
+---
+title: "Sarthak Arora"
+subtitle: "Notes on ML, GPU programming, and systems."
+listing:
+  contents: posts
+  sort: "date desc"
+  type: default
+  categories: true
+  sort-ui: false
+  filter-ui: false
+  fields: [date, title, description, categories, reading-time]
+page-layout: full
+title-block-banner: false
+---

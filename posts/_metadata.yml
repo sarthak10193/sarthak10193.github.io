@@ -1,0 +1,11 @@
+# Defaults applied to ALL posts — override per-post in the post's front matter
+freeze: auto
+comments:
+  giscus:
+    repo: sarthak10193/sarthak10193.github.io
+    repo-id: ""          # Fill in after creating the GitHub repo (run: gh api repos/sarthak10193/sarthak10193.github.io --jq .id)
+    category: "Announcements"
+    category-id: ""      # Fill in after enabling Discussions on the repo
+    mapping: "pathname"
+    reactions-enabled: true
+    loading: lazy

@@ -1,0 +1,44 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Sarthak Arora"
+  description: "Notes on ML, GPU programming, and systems."
+  site-url: "https://sarthak10193.github.io"
+  favicon: "favicon.ico"
+
+  navbar:
+    right:
+      - text: "Blog"
+        href: index.qmd
+      - text: "About"
+        href: about.qmd
+      - icon: github
+        href: https://github.com/sarthak10193
+      - icon: linkedin
+        href: https://linkedin.com/in/sarthak10193
+
+  page-footer:
+    center: "© 2026 Sarthak Arora · Built with [Quarto](https://quarto.org)"
+
+format:
+  html:
+    theme:
+      light: flatly
+      dark: darkly
+    highlight-style: github-dark
+    code-copy: true
+    code-overflow: wrap
+    toc: true
+    toc-depth: 3
+    mainfont: "Inter, system-ui, sans-serif"
+    monofont: "JetBrains Mono, Fira Code, monospace"
+
+  # Math rendering via KaTeX (fast, no JS required after build)
+execute:
+  freeze: auto          # Re-render notebooks only when source changes
+  cache: true
+
+# KaTeX for fast math rendering
+math: katex
