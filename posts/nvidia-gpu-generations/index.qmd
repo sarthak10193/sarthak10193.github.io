@@ -1,0 +1,48 @@
+---
+title: "NVIDIA GPU Generations: A Hardware Progression"
+description: "How each GPU generation from Volta to Blackwell changed the memory pipeline, compute primitives, and synchronization model for deep learning workloads."
+date: "2026-04-16"
+categories: [CUDA, GPU, Hardware]
+image: images/volta-ampere-memory-pipeline.png
+toc: true
+toc-depth: 3
+---
+
+## Volta
+
+**Tensor Cores** were introduced, decoupling GEMM arithmetic from the general-purpose (CUDA cores) computational pipeline. A new 4×4 dedicated hardware unit for performing FMAs could be targeted using the `wmma::mma_sync()` instruction. This single instruction could do 64 FMAs, what would have earlier taken 64 individual scalar instructions.
+
+However, data movement was still general — threads would use `ld.global → ld.shared` to load GMEM to SMEM and then get blocked on `__syncthreads()` waiting for the copy to finish. Warps would sit idle. Every word was manually shuttled from GMEM to SMEM through registers, one load/store at a time.
+
+## Ampere (A100)
+
+Ampere added the `cp.async` instruction family, which is essentially a kernel-side interface to the DMA engine. This allowed true pipelining of the GEMM mainloop. In Volta, every warp had to stall on `__syncthreads()`, leaving SMs heavily underutilized.
+
+With `cp.async`, threads issue the copy and immediately return control — data transfer is offloaded to a dedicated DMA engine. `cuda::pipeline` + `pipe.consumer_wait()` replaces the block-wide `__syncthreads()`. You wait only on the specific SMEM slot you're about to consume, not on the entire block. This allows pipelining the GEMM mainloop (stage=2 or stage=3): while prefetching data for $k+1$ and $k+2$, the $k$-th tile can run GEMM.
+
+![Volta relies on `__syncthreads()` and idle warps; Ampere's `cp.async` offloads copies to a DMA engine, enabling a pipelined GEMM mainloop](images/volta-ampere-memory-pipeline.png)
+
+## Hopper (H100, H200)
+
+Hopper introduced **TMA** (Tensor Memory Accelerator) and **wgmma** as the new compute and memory primitives.
+
+TMA is a hardware unit that takes a tensor descriptor and handles the entire GMEM→SMEM transfer autonomously — no per-thread address computation, no register pressure. One instruction issues the bulk async copy for a whole tile.
+
+**mbarrier** is the new synchronization primitive that lives in SMEM:
+
+- `mbarrier.init` — set up the barrier object in SMEM and define the expected arrival count
+- `mbarrier.arrive` — signal arrival
+- `mbarrier.complete_tx` — TMA hardware signals async completion when the DMA actually finishes
+
+**SMEM Double Buffering:**
+
+| Buffer | Purpose |
+|---|---|
+| Buffer 1 | Active tile being consumed by `wgmma` |
+| Buffer 2 | Next tile being loaded by TMA |
+
+![Hopper's TMA signals `mbarrier.complete_tx` on DMA completion, decoupling data arrival from warp synchronization. SMEM double-buffering keeps `wgmma` busy while TMA loads the next tile.](images/hopper-tma-mbarrier-smem.png)
+
+## Blackwell
+
+*Coming soon.*
