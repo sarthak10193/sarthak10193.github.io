@@ -20,7 +20,7 @@ Ampere added the `cp.async` instruction family, which is essentially a kernel-si
 
 With `cp.async`, threads issue the copy and immediately return control — data transfer is offloaded to a dedicated DMA engine. `cuda::pipeline` + `pipe.consumer_wait()` replaces the block-wide `__syncthreads()`. You wait only on the specific SMEM slot you're about to consume, not on the entire block. This allows pipelining the GEMM mainloop (stage=2 or stage=3): while prefetching data for $k+1$ and $k+2$, the $k$-th tile can run GEMM.
 
-![Volta relies on `__syncthreads()` and idle warps; Ampere's `cp.async` offloads copies to a DMA engine, enabling a pipelined GEMM mainloop](images/volta-ampere-memory-pipeline.png)
+![Volta relies on `__syncthreads()` and idle warps; Ampere's `cp.async` offloads copies to a DMA engine, enabling a pipelined GEMM mainloop](images/volta-ampere-memory-pipeline.png){width=90%}
 
 ## Hopper (H100, H200)
 
@@ -41,7 +41,7 @@ TMA is a hardware unit that takes a tensor descriptor and handles the entire GME
 | Buffer 1 | Active tile being consumed by `wgmma` |
 | Buffer 2 | Next tile being loaded by TMA |
 
-![Hopper's TMA signals `mbarrier.complete_tx` on DMA completion, decoupling data arrival from warp synchronization. SMEM double-buffering keeps `wgmma` busy while TMA loads the next tile.](images/hopper-tma-mbarrier-smem.png)
+![Hopper's TMA signals `mbarrier.complete_tx` on DMA completion, decoupling data arrival from warp synchronization. SMEM double-buffering keeps `wgmma` busy while TMA loads the next tile.](images/hopper-tma-mbarrier-smem.png){width=70%}
 
 ## Blackwell
 

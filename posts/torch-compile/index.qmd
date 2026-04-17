@@ -10,7 +10,7 @@ toc-depth: 3
 
 ## Why `torch.compile`?
 
-![Dynamo captures the FX graph; Inductor lowers it to Triton/C++](images/dynamo-inductor-pipeline.png)
+![Dynamo captures the FX graph; Inductor lowers it to Triton/C++](images/dynamo-inductor-pipeline.png){width=90%}
 
 PyTorch's eager mode is flexible and debuggable, but it pays a price: every op goes through the Python interpreter, tensor dispatch, and kernel launch one at a time. `torch.compile` closes the gap with JAX/XLA-style ahead-of-time compilation — without giving up Python dynamism.
 
@@ -49,7 +49,7 @@ PyFrameObject (default eval) → PatchedPyFrameObject (Dynamo's eval)
 
 The `@torch.compile` decorator's only job is to install the scaffolding that passes bytecode, args, and globals to Dynamo on the first call. **`@torch.compile` does not compile anything itself.**
 
-![Default CPython frame evaluation (left) vs TorchDynamo's patched frame evaluation with guards and FX graph capture (right)](images/dynamo-cpython-frame-eval.png)
+![Default CPython frame evaluation (left) vs TorchDynamo's patched frame evaluation with guards and FX graph capture (right)](images/dynamo-cpython-frame-eval.png){width=85%}
 
 #### FX Graph
 
@@ -103,7 +103,7 @@ Common causes:
 3. **`print()` statements** inside compiled code.
 4. **Custom ops** (CUDA kernels, CUTLASS, user-defined Triton kernels) — Dynamo treats them as opaque callables.
 
-![Graph breaks split the Python function into compiled regions separated by eager interpreter calls; the modified bytecode shows the COMPILED REGION / GRAPH BREAK / RESUME POINT structure](images/graph-break-bytecode.png)
+![Graph breaks split the Python function into compiled regions separated by eager interpreter calls; the modified bytecode shows the COMPILED REGION / GRAPH BREAK / RESUME POINT structure](images/graph-break-bytecode.png){width=90%}
 
 ```python
 # Forces a graph break — data-dependent branch
@@ -248,9 +248,9 @@ For models that use dataclasses as inputs:
 torch.export.register_dataclass(MyDataClass)
 ```
 
-![torch.export: principles of graph capture — safety vs. coverage trade-off between `torch.export` (strict, static) and `torch.trace` (lenient, dynamic)](images/export-graph-capture-principles.png)
+![torch.export: principles of graph capture — safety vs. coverage trade-off between `torch.export` (strict, static) and `torch.trace` (lenient, dynamic)](images/export-graph-capture-principles.png){width=80%}
 
-![torch.export container specialization: list/dict inputs get burned into the graph; `torch.export.register_dataclass` enables dataclass inputs](images/export-container-specialization.png)
+![torch.export container specialization: list/dict inputs get burned into the graph; `torch.export.register_dataclass` enables dataclass inputs](images/export-container-specialization.png){width=85%}
 
 ---
 

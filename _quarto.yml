@@ -27,7 +27,8 @@ format:
     theme:
       light: flatly
       dark: darkly
-    highlight-style: github-dark
+    highlight-style: arrow
+    css: styles.css
     code-copy: true
     code-overflow: wrap
     toc: true
