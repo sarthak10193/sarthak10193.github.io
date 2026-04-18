@@ -42,6 +42,13 @@
     "text": "Blackwell\nComing soon."
   },
   {
+    "objectID": "posts/nvidia-gpu-generations/index.html#changelog",
+    "href": "posts/nvidia-gpu-generations/index.html#changelog",
+    "title": "NVIDIA GPU Generations: A Hardware Progression",
+    "section": "Changelog",
+    "text": "Changelog\n\n\n\nDate\nChanges\n\n\n\n\n2026-04-17\nUpdated with higher resolution images\n\n\n2026-04-16\nInitial publish"
+  },
+  {
     "objectID": "posts/torch-compile/index.html",
     "href": "posts/torch-compile/index.html",
     "title": "torch.compile — A Manual",
@@ -103,6 +110,13 @@
     "title": "torch.compile — A Manual",
     "section": "References",
     "text": "References\n\nDynamo Overview — PyTorch docs\ninductor/scheduler.py — can_fuse() / score_fuse() cost model\nDynamo Deep-Dive — PyTorch docs\nCUDAGraph Trees — PyTorch docs\nPyTorch 2 paper — Faster Machine Learning Through Dynamic Python Bytecode Transformation and Graph Compilation\nBlazing Fast GenAI Inference With torch.compile — Richard Zou, Meta"
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#changelog",
+    "href": "posts/torch-compile/index.html#changelog",
+    "title": "torch.compile — A Manual",
+    "section": "Changelog",
+    "text": "Changelog\n\n\n\nDate\nChanges\n\n\n\n\n2026-04-16\nInitial publish"
   },
   {
     "objectID": "about.html",

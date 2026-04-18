@@ -19,6 +19,19 @@ p code, li code, td code, th code, h1 code, h2 code, h3 code, h4 code {
   border: 1px solid #d8b4fe;
 }
 
+/* ── Changelog section ────────────────────────────────────────────────────── */
+/* The ## Changelog table gets a muted, compact style                        */
+h2#changelog + table {
+  font-size: 0.85em;
+  opacity: 0.75;
+  margin-top: 0.5rem;
+}
+h2#changelog + table td:first-child {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: #888;
+}
+
 /* ── Images ───────────────────────────────────────────────────────────────── */
 /* Prevent small images from being stretched; keep them crisp                */
 .quarto-figure img,
