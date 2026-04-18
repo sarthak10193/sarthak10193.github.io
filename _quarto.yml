@@ -35,6 +35,7 @@ format:
     toc-depth: 3
     mainfont: "Inter, system-ui, sans-serif"
     monofont: "JetBrains Mono, Fira Code, monospace"
+    date-modified: last-modified
 
   # Math rendering via KaTeX (fast, no JS required after build)
 execute:

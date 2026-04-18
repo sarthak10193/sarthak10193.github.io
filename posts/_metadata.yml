@@ -1,5 +1,6 @@
 # Defaults applied to ALL posts — override per-post in the post's front matter
 freeze: auto
+date-modified: last-modified
 comments:
   giscus:
     repo: sarthak10193/sarthak10193.github.io

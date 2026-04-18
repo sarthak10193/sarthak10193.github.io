@@ -2,6 +2,7 @@
 title: "torch.compile — A Manual"
 description: "A deep dive into how torch.compile works under the hood: Dynamo, FX graphs, guards, graph breaks, CUDA graph integration, best practices, and case studies."
 date: "2026-04-16"
+date-modified: "2026-04-16"
 categories: [PyTorch, Compiler, CUDA, Performance]
 image: images/dynamo-inductor-pipeline.png
 toc: true
@@ -331,3 +332,11 @@ XLA uses **MLIR** to define multiple dialects at different abstraction levels an
 4. [CUDAGraph Trees — PyTorch docs](https://docs.pytorch.org/docs/stable/torch.compiler_cudagraph_trees.html)
 5. PyTorch 2 paper — *Faster Machine Learning Through Dynamic Python Bytecode Transformation and Graph Compilation*
 6. [Blazing Fast GenAI Inference With torch.compile — Richard Zou, Meta](https://www.youtube.com/watch?v=1wV1ESbGrVQ)
+
+---
+
+## Changelog
+
+| Date | Changes |
+|---|---|
+| 2026-04-16 | Initial publish |

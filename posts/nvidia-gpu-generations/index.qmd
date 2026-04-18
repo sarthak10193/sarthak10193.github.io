@@ -2,6 +2,7 @@
 title: "NVIDIA GPU Generations: A Hardware Progression"
 description: "How each GPU generation from Volta to Blackwell changed the memory pipeline, compute primitives, and synchronization model for deep learning workloads."
 date: "2026-04-16"
+date-modified: "2026-04-17"
 categories: [CUDA, GPU, Hardware]
 image: images/volta-ampere-memory-pipeline.png
 toc: true
@@ -46,3 +47,12 @@ TMA is a hardware unit that takes a tensor descriptor and handles the entire GME
 ## Blackwell
 
 *Coming soon.*
+
+---
+
+## Changelog
+
+| Date | Changes |
+|---|---|
+| 2026-04-17 | Updated with higher resolution images |
+| 2026-04-16 | Initial publish |
