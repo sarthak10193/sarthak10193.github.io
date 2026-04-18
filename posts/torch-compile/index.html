@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="dcterms.date" content="2026-04-16">
+<meta name="description" content="A deep dive into how torch.compile works under the hood: Dynamo, FX graphs, guards, graph breaks, CUDA graph integration, best practices, and case studies.">
+
+<title>torch.compile — A Manual – Sarthak Arora</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../">
+<link href="../../favicon.ico" rel="icon">
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-d0ae9245876894da5ac7e18953ecc5cc.css" rel="stylesheet" class="quarto-color-scheme quarto-color-alternate" id="quarto-text-highlighting-styles">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-cfc50ef1280d883f331fe6183b4e74a6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../site_libs/bootstrap/bootstrap-dark-a9b8d54c7d3b8a89cc31a0678797d615.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="../../site_libs/bootstrap/bootstrap-cfc50ef1280d883f331fe6183b4e74a6.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+
+  <script src="https://cdnjs.cloudflare.com/polyfill/v3/polyfill.min.js?features=es6"></script>
+  <script defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="../../styles.css">
+</head>
+
+<body class="nav-fixed quarto-light"><script id="quarto-html-before-body" type="application/javascript">
+    const toggleBodyColorMode = (bsSheetEl) => {
+      const mode = bsSheetEl.getAttribute("data-mode");
+      const bodyEl = window.document.querySelector("body");
+      if (mode === "dark") {
+        bodyEl.classList.add("quarto-dark");
+        bodyEl.classList.remove("quarto-light");
+      } else {
+        bodyEl.classList.add("quarto-light");
+        bodyEl.classList.remove("quarto-dark");
+      }
+    }
+    const toggleBodyColorPrimary = () => {
+      const bsSheetEl = window.document.querySelector("link#quarto-bootstrap:not([rel=disabled-stylesheet])");
+      if (bsSheetEl) {
+        toggleBodyColorMode(bsSheetEl);
+      }
+    }
+    const setColorSchemeToggle = (alternate) => {
+      const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+      for (let i=0; i < toggles.length; i++) {
+        const toggle = toggles[i];
+        if (toggle) {
+          if (alternate) {
+            toggle.classList.add("alternate");
+          } else {
+            toggle.classList.remove("alternate");
+          }
+        }
+      }
+    };
+    const toggleColorMode = (alternate) => {
+      // Switch the stylesheets
+      const primaryStylesheets = window.document.querySelectorAll('link.quarto-color-scheme:not(.quarto-color-alternate)');
+      const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+      manageTransitions('#quarto-margin-sidebar .nav-link', false);
+      if (alternate) {
+        // note: dark is layered on light, we don't disable primary!
+        enableStylesheet(alternateStylesheets);
+        for (const sheetNode of alternateStylesheets) {
+          if (sheetNode.id === "quarto-bootstrap") {
+            toggleBodyColorMode(sheetNode);
+          }
+        }
+      } else {
+        disableStylesheet(alternateStylesheets);
+        enableStylesheet(primaryStylesheets)
+        toggleBodyColorPrimary();
+      }
+      manageTransitions('#quarto-margin-sidebar .nav-link', true);
+      // Switch the toggles
+      setColorSchemeToggle(alternate)
+      // Hack to workaround the fact that safari doesn't
+      // properly recolor the scrollbar when toggling (#1455)
+      if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+        manageTransitions("body", false);
+        window.scrollTo(0, 1);
+        setTimeout(() => {
+          window.scrollTo(0, 0);
+          manageTransitions("body", true);
+        }, 40);
+      }
+    }
+    const disableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        stylesheet.rel = 'disabled-stylesheet';
+      }
+    }
+    const enableStylesheet = (stylesheets) => {
+      for (let i=0; i < stylesheets.length; i++) {
+        const stylesheet = stylesheets[i];
+        if(stylesheet.rel !== 'stylesheet') { // for Chrome, which will still FOUC without this check
+          stylesheet.rel = 'stylesheet';
+        }
+      }
+    }
+    const manageTransitions = (selector, allowTransitions) => {
+      const els = window.document.querySelectorAll(selector);
+      for (let i=0; i < els.length; i++) {
+        const el = els[i];
+        if (allowTransitions) {
+          el.classList.remove('notransition');
+        } else {
+          el.classList.add('notransition');
+        }
+      }
+    }
+    const isFileUrl = () => {
+      return window.location.protocol === 'file:';
+    }
+    const hasAlternateSentinel = () => {
+      let styleSentinel = getColorSchemeSentinel();
+      if (styleSentinel !== null) {
+        return styleSentinel === "alternate";
+      } else {
+        return false;
+      }
+    }
+    const setStyleSentinel = (alternate) => {
+      const value = alternate ? "alternate" : "default";
+      if (!isFileUrl()) {
+        window.localStorage.setItem("quarto-color-scheme", value);
+      } else {
+        localAlternateSentinel = value;
+      }
+    }
+    const getColorSchemeSentinel = () => {
+      if (!isFileUrl()) {
+        const storageValue = window.localStorage.getItem("quarto-color-scheme");
+        return storageValue != null ? storageValue : localAlternateSentinel;
+      } else {
+        return localAlternateSentinel;
+      }
+    }
+    const toggleGiscusIfUsed = (isAlternate, darkModeDefault) => {
+      const baseTheme = document.querySelector('#giscus-base-theme')?.value ?? 'light';
+      const alternateTheme = document.querySelector('#giscus-alt-theme')?.value ?? 'dark';
+      let newTheme = '';
+      if(authorPrefersDark) {
+        newTheme = isAlternate ? baseTheme : alternateTheme;
+      } else {
+        newTheme = isAlternate ? alternateTheme : baseTheme;
+      }
+      const changeGiscusTheme = () => {
+        // From: https://github.com/giscus/giscus/issues/336
+        const sendMessage = (message) => {
+          const iframe = document.querySelector('iframe.giscus-frame');
+          if (!iframe) return;
+          iframe.contentWindow.postMessage({ giscus: message }, 'https://giscus.app');
+        }
+        sendMessage({
+          setConfig: {
+            theme: newTheme
+          }
+        });
+      }
+      const isGiscussLoaded = window.document.querySelector('iframe.giscus-frame') !== null;
+      if (isGiscussLoaded) {
+        changeGiscusTheme();
+      }
+    };
+    const authorPrefersDark = false;
+    const darkModeDefault = authorPrefersDark;
+      document.querySelector('link#quarto-text-highlighting-styles.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+      document.querySelector('link#quarto-bootstrap.quarto-color-scheme-extra').rel = 'disabled-stylesheet';
+    let localAlternateSentinel = darkModeDefault ? 'alternate' : 'default';
+    // Dark / light mode switch
+    window.quartoToggleColorScheme = () => {
+      // Read the current dark / light value
+      let toAlternate = !hasAlternateSentinel();
+      toggleColorMode(toAlternate);
+      setStyleSentinel(toAlternate);
+      toggleGiscusIfUsed(toAlternate, darkModeDefault);
+      window.dispatchEvent(new Event('resize'));
+    };
+    // Switch to dark mode if need be
+    if (hasAlternateSentinel()) {
+      toggleColorMode(true);
+    } else {
+      toggleColorMode(false);
+    }
+  </script>
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Sarthak Arora</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../index.html"> 
+<span class="menu-text">Blog</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../about.html"> 
+<span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/sarthak10193"> <i class="bi bi-github" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/sarthak10193"> <i class="bi bi-linkedin" role="img">
+</i> 
+<span class="menu-text"></span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#why-torch.compile" id="toc-why-torch.compile" class="nav-link active" data-scroll-target="#why-torch.compile">Why <code>torch.compile</code>?</a></li>
+  <li><a href="#torch.compile-under-the-hood" id="toc-torch.compile-under-the-hood" class="nav-link" data-scroll-target="#torch.compile-under-the-hood"><code>torch.compile</code> Under the Hood</a>
+  <ul class="collapse">
+  <li><a href="#i-get-in-hooking-into-cpython" id="toc-i-get-in-hooking-into-cpython" class="nav-link" data-scroll-target="#i-get-in-hooking-into-cpython">I — Get-In: Hooking into CPython</a></li>
+  <li><a href="#ii-manipulate-bytecode-manipulation" id="toc-ii-manipulate-bytecode-manipulation" class="nav-link" data-scroll-target="#ii-manipulate-bytecode-manipulation">II — Manipulate: Bytecode Manipulation</a></li>
+  <li><a href="#iii-be-ware-graph-breaks-recompilation" id="toc-iii-be-ware-graph-breaks-recompilation" class="nav-link" data-scroll-target="#iii-be-ware-graph-breaks-recompilation">III — Be-ware: Graph Breaks &amp; Recompilation</a></li>
+  </ul></li>
+  <li><a href="#torch.compile-cuda-graphs" id="toc-torch.compile-cuda-graphs" class="nav-link" data-scroll-target="#torch.compile-cuda-graphs"><code>torch.compile</code> + CUDA Graphs</a></li>
+  <li><a href="#best-practices" id="toc-best-practices" class="nav-link" data-scroll-target="#best-practices">Best Practices</a>
+  <ul class="collapse">
+  <li><a href="#full-graph-avoiding-graph-breaks" id="toc-full-graph-avoiding-graph-breaks" class="nav-link" data-scroll-target="#full-graph-avoiding-graph-breaks">Full Graph &amp; Avoiding Graph Breaks</a></li>
+  <li><a href="#handling-dynamic-shapes" id="toc-handling-dynamic-shapes" class="nav-link" data-scroll-target="#handling-dynamic-shapes">Handling Dynamic Shapes</a></li>
+  <li><a href="#mixing-cuda-graphs-with-torch.compile" id="toc-mixing-cuda-graphs-with-torch.compile" class="nav-link" data-scroll-target="#mixing-cuda-graphs-with-torch.compile">Mixing CUDA Graphs with <code>torch.compile</code></a></li>
+  <li><a href="#reducing-compilation-recompilation-time" id="toc-reducing-compilation-recompilation-time" class="nav-link" data-scroll-target="#reducing-compilation-recompilation-time">Reducing Compilation / Recompilation Time</a></li>
+  <li><a href="#known-limitations-as-of-2025" id="toc-known-limitations-as-of-2025" class="nav-link" data-scroll-target="#known-limitations-as-of-2025">Known Limitations (as of 2025)</a></li>
+  </ul></li>
+  <li><a href="#torch.export" id="toc-torch.export" class="nav-link" data-scroll-target="#torch.export"><code>torch.export</code></a></li>
+  <li><a href="#case-studies" id="toc-case-studies" class="nav-link" data-scroll-target="#case-studies">Case Studies</a>
+  <ul class="collapse">
+  <li><a href="#case-study-i-compilation-failed" id="toc-case-study-i-compilation-failed" class="nav-link" data-scroll-target="#case-study-i-compilation-failed">Case Study I — Compilation Failed</a></li>
+  <li><a href="#case-study-ii-compilation-succeeded-but-no-speedup-or-regression" id="toc-case-study-ii-compilation-succeeded-but-no-speedup-or-regression" class="nav-link" data-scroll-target="#case-study-ii-compilation-succeeded-but-no-speedup-or-regression">Case Study II — Compilation Succeeded but No Speedup (or Regression)</a></li>
+  <li><a href="#case-study-iii-vllm" id="toc-case-study-iii-vllm" class="nav-link" data-scroll-target="#case-study-iii-vllm">Case Study III — vLLM</a></li>
+  </ul></li>
+  <li><a href="#torch.compile-vs-jax-xla" id="toc-torch.compile-vs-jax-xla" class="nav-link" data-scroll-target="#torch.compile-vs-jax-xla"><code>torch.compile</code> vs JAX + XLA</a></li>
+  <li><a href="#references" id="toc-references" class="nav-link" data-scroll-target="#references">References</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">torch.compile — A Manual</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">PyTorch</div>
+    <div class="quarto-category">Compiler</div>
+    <div class="quarto-category">CUDA</div>
+    <div class="quarto-category">Performance</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    A deep dive into how torch.compile works under the hood: Dynamo, FX graphs, guards, graph breaks, CUDA graph integration, best practices, and case studies.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 16, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="why-torch.compile" class="level2">
+<h2 class="anchored" data-anchor-id="why-torch.compile">Why <code>torch.compile</code>?</h2>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="images/dynamo-inductor-pipeline.png" class="img-fluid figure-img" style="width:90.0%"></p>
+<figcaption>Dynamo captures the FX graph; Inductor lowers it to Triton/C++</figcaption>
+</figure>
+</div>
+<p>PyTorch’s eager mode is flexible and debuggable, but it pays a price: every op goes through the Python interpreter, tensor dispatch, and kernel launch one at a time. <code>torch.compile</code> closes the gap with JAX/XLA-style ahead-of-time compilation — without giving up Python dynamism.</p>
+<blockquote class="blockquote">
+<p><strong>JIT note:</strong> Triton has CPU overhead per launch; CUDA Graphs help here. But Triton now also supports AOT kernels, making CUDA Graphs less necessary for pure-Triton workloads. <code>torch.compile</code> sits above all of this.</p>
+</blockquote>
+<p>Related questions it addresses:</p>
+<ul>
+<li>When can ops be fused?</li>
+<li>How do graph breaks affect performance?</li>
+<li>How does it compare to JAX + XLA?</li>
+</ul>
+<hr>
+</section>
+<section id="torch.compile-under-the-hood" class="level2">
+<h2 class="anchored" data-anchor-id="torch.compile-under-the-hood"><code>torch.compile</code> Under the Hood</h2>
+<p>The compiler pipeline has three logical stages: <strong>Get-In</strong> (trace Python), <strong>Manipulate</strong> (rewrite the graph), and <strong>Be-ware</strong> (pitfalls).</p>
+<section id="i-get-in-hooking-into-cpython" class="level3">
+<h3 class="anchored" data-anchor-id="i-get-in-hooking-into-cpython">I — Get-In: Hooking into CPython</h3>
+<p><strong>CPython</strong> is both a compiler (to bytecode) and an interpreter (of that bytecode), frame by frame.</p>
+<p>A <strong>Frame</strong> (<code>PyFrameObject</code>) is a snapshot of a function’s state:</p>
+<ul>
+<li>The bytecode itself</li>
+<li>Namespaces — local and global variables</li>
+<li>The execution stack</li>
+<li>Exception state</li>
+<li>Built-ins (<code>print</code>, <code>len</code>)</li>
+<li>Trace/debug hooks</li>
+</ul>
+<p><a href="https://peps.python.org/pep-0523/">PEP 523</a> exposes an API for a custom per-function interpreter. If one is installed, CPython will use it instead of the default. <strong>Dynamo</strong> leverages exactly this API: it defines a new interpreter that traces all PyTorch op calls and builds an FX graph as your code executes.</p>
+<pre><code>PyFrameObject (default eval) → PatchedPyFrameObject (Dynamo's eval)</code></pre>
+<p>The <code>@torch.compile</code> decorator’s only job is to install the scaffolding that passes bytecode, args, and globals to Dynamo on the first call. <strong><code>@torch.compile</code> does not compile anything itself.</strong></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="images/dynamo-cpython-frame-eval.png" class="img-fluid figure-img" style="width:85.0%"></p>
+<figcaption>Default CPython frame evaluation (left) vs TorchDynamo’s patched frame evaluation with guards and FX graph capture (right)</figcaption>
+</figure>
+</div>
+<section id="fx-graph" class="level4">
+<h4 class="anchored" data-anchor-id="fx-graph">FX Graph</h4>
+<p><code>torch.fx</code> traces your model symbolically and produces an <strong>FX Graph</strong> — a pure Python data structure representing the computation as a DAG of nodes. This is the IR that flows into the rest of the compiler:</p>
+<pre><code>Python source → Dynamo bytecode analysis → FX Graph → AOTAutograd → Inductor → Triton / C++</code></pre>
+<p><code>torch.export</code> also produces an FX Graph, but via a stricter trace that bakes in shapes and constants (more on this below).</p>
+</section>
+<section id="guards-making-dynamo-resilient" class="level4">
+<h4 class="anchored" data-anchor-id="guards-making-dynamo-resilient">Guards — Making Dynamo Resilient</h4>
+<p>Every time Dynamo traces a function it attaches <strong>guards</strong> to the compiled artifact: checks on shapes, dtypes, values, and Python object identity that must hold for the compiled version to be reused.</p>
+<p>When a guard is violated:</p>
+<ol type="1">
+<li><strong>Runtime overhead</strong> — every call checks all guards</li>
+<li><strong>Recompilation</strong> — if a guard fails, Dynamo re-traces</li>
+</ol>
+<p>Torch Compile adds guards for every user-accessible attribute. Use <code>tlparse</code> (or <code>TORCH_LOGS=guards</code>) to inspect guard overhead.</p>
+</section>
+<section id="dynamic-shapes-recompilation" class="level4">
+<h4 class="anchored" data-anchor-id="dynamic-shapes-recompilation">Dynamic Shapes &amp; Recompilation</h4>
+<p>Guards + recompilation are the two main contributors to <code>torch.compile</code> being <strong>slower than eager</strong> in pathological cases. Understanding this lets you diagnose and eliminate the overhead.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>API</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>torch.compile(dynamic=True)</code></td>
+<td>Dynamo uses symbolic integers for shapes; fewer recompilations</td>
+</tr>
+<tr class="even">
+<td><code>torch.export(..., dynamic_shapes=...)</code></td>
+<td>Explicit shape constraints at export time</td>
+</tr>
+<tr class="odd">
+<td><code>torch._dynamo.mark_dynamic(x, dim=0)</code></td>
+<td>Mark a specific tensor dimension as dynamic</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+</section>
+<section id="ii-manipulate-bytecode-manipulation" class="level3">
+<h3 class="anchored" data-anchor-id="ii-manipulate-bytecode-manipulation">II — Manipulate: Bytecode Manipulation</h3>
+<p>Dynamo doesn’t parse Python source — it works at the <strong>bytecode</strong> level. It walks <code>co_code</code>, intercepts <code>CALL_FUNCTION</code> / <code>CALL_METHOD</code> / <code>LOAD_ATTR</code> instructions that touch <code>torch.Tensor</code> objects, and emits graph nodes for each one. Non-Torch code (pure Python logic) passes through unchanged or causes a graph break.</p>
+<hr>
+</section>
+<section id="iii-be-ware-graph-breaks-recompilation" class="level3">
+<h3 class="anchored" data-anchor-id="iii-be-ware-graph-breaks-recompilation">III — Be-ware: Graph Breaks &amp; Recompilation</h3>
+<section id="graph-breaks" class="level4">
+<h4 class="anchored" data-anchor-id="graph-breaks">Graph Breaks</h4>
+<p>A <strong>graph break</strong> occurs when Dynamo encounters code it cannot represent in an FX Graph. It ends the current subgraph, lets the Python interpreter handle that piece, and starts a new subgraph afterwards.</p>
+<p>Common causes:</p>
+<ol type="1">
+<li><strong>Data-dependent control flow</strong> — Python <code>if/else</code> where the condition depends on tensor values. Fix: use <code>torch.cond()</code>, <code>torch.where()</code>, or restructure.</li>
+<li><strong><code>.item()</code>, <code>.tolist()</code></strong> — require a CPU↔︎GPU sync, forcing a break.</li>
+<li><strong><code>print()</code> statements</strong> inside compiled code.</li>
+<li><strong>Custom ops</strong> (CUDA kernels, CUTLASS, user-defined Triton kernels) — Dynamo treats them as opaque callables.</li>
+</ol>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="images/graph-break-bytecode.png" class="img-fluid figure-img" style="width:90.0%"></p>
+<figcaption>Graph breaks split the Python function into compiled regions separated by eager interpreter calls; the modified bytecode shows the COMPILED REGION / GRAPH BREAK / RESUME POINT structure</figcaption>
+</figure>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Forces a graph break — data-dependent branch</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> x.<span class="bu">sum</span>() <span class="op">&gt;</span> <span class="dv">0</span>:</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    y <span class="op">=</span> x <span class="op">*</span> <span class="dv">2</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    y <span class="op">=</span> x <span class="op">*</span> <span class="op">-</span><span class="dv">1</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Graph-friendly alternative</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>y <span class="op">=</span> torch.where(x.<span class="bu">sum</span>() <span class="op">&gt;</span> <span class="dv">0</span>, x <span class="op">*</span> <span class="dv">2</span>, x <span class="op">*</span> <span class="op">-</span><span class="dv">1</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>Use <code>torch.compile(full_graph=True)</code> to make Dynamo <strong>error out</strong> on any graph break — it will tell you exactly where.</p>
+</section>
+<section id="recompilation" class="level4">
+<h4 class="anchored" data-anchor-id="recompilation">Recompilation</h4>
+<p>Dynamo captures separate graphs for <strong>forward</strong> and <strong>backward</strong> passes. The forward FX Graph is used by <code>AOTAutograd</code> to generate the compiled backward. Each forward graph has its own backward counterpart.</p>
+<p>The backend is <strong>Inductor</strong>, which lowers the FX Graph to:</p>
+<ul>
+<li><strong>Triton</strong> (default GPU backend) — generates fused CUDA kernels</li>
+<li><strong>C++</strong> (CPU backend)</li>
+</ul>
+<p>Under dynamic shapes, Dynamo uses <strong>Sympy</strong> for symbolic shape arithmetic, allowing a single compiled artifact to handle multiple shapes without recompilation.</p>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Tip
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Instead of <code>torch.tensor() + 5</code> (constant scalar), prefer <code>torch.tensor() + torch.tensor(5)</code> to avoid shape-triggered recompilation.</p>
+</div>
+</div>
+<hr>
+</section>
+</section>
+</section>
+<section id="torch.compile-cuda-graphs" class="level2">
+<h2 class="anchored" data-anchor-id="torch.compile-cuda-graphs"><code>torch.compile</code> + CUDA Graphs</h2>
+<p>These two are <strong>complementary</strong>, not alternatives.</p>
+<p><strong><code>torch.compile</code></strong> is a compiler infrastructure: it traces your PyTorch code, generates an FX graph, lowers it through Inductor (defaulting to Triton), and produces optimized kernels with operator fusion.</p>
+<p><strong>CUDA Graphs</strong> solve a different problem: CPU-side kernel launch latency. Once the GPU work is captured into a graph, the CPU replays it with a single call instead of launching kernels one by one.</p>
+<p><strong>Combined workflow:</strong></p>
+<ol type="1">
+<li><code>torch.compile</code> your model — possibly into multiple subgraphs if there are graph breaks</li>
+<li>Wrap the compiled model (+ optimizer step, etc.) in a CUDA Graph capture</li>
+<li>Result: fused Triton kernels running with near-zero CPU overhead</li>
+</ol>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># mode="reduce-overhead" enables CUDA Graphs automatically</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> torch.<span class="bu">compile</span>(model, mode<span class="op">=</span><span class="st">"reduce-overhead"</span>)</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="co"># PyTorch handles the graph capture transparently on the first few iterations</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="co"># and replays on all subsequent calls</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>reduce-overhead</code> mode tries to use CUDA Graphs automatically, but it has constraints: no input mutations, static memory layout, limited graph dynamism. You may need to tweak your model slightly to be CUDA Graph-compatible.</p>
+</div>
+</div>
+<hr>
+</section>
+<section id="best-practices" class="level2">
+<h2 class="anchored" data-anchor-id="best-practices">Best Practices</h2>
+<section id="full-graph-avoiding-graph-breaks" class="level3">
+<h3 class="anchored" data-anchor-id="full-graph-avoiding-graph-breaks">Full Graph &amp; Avoiding Graph Breaks</h3>
+<ul>
+<li>Use <code>full_graph=True</code> during debugging to surface breaks immediately</li>
+<li>Replace Python control flow with graph-friendly ops: <code>torch.where</code>, <code>torch.cond</code></li>
+<li>Avoid <code>.item()</code>, <code>.numpy()</code>, <code>.tolist()</code> inside hot paths</li>
+<li>Custom ops show up as opaque callables — wrap them with <code>torch.library</code> if you want Dynamo to trace through them</li>
+</ul>
+</section>
+<section id="handling-dynamic-shapes" class="level3">
+<h3 class="anchored" data-anchor-id="handling-dynamic-shapes">Handling Dynamic Shapes</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Option 1: tell compile the shapes are dynamic</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> torch.<span class="bu">compile</span>(model, dynamic<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Option 2: mark specific dimensions as dynamic</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>torch._dynamo.mark_dynamic(x, <span class="dv">0</span>)   <span class="co"># batch dimension is dynamic</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Option 3: use torch.export with explicit constraints</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> torch.export <span class="im">import</span> Dim</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>batch <span class="op">=</span> Dim(<span class="st">"batch"</span>, <span class="bu">min</span><span class="op">=</span><span class="dv">1</span>, <span class="bu">max</span><span class="op">=</span><span class="dv">256</span>)</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>exported <span class="op">=</span> torch.export.export(model, (x,), dynamic_shapes<span class="op">=</span>{<span class="st">"x"</span>: {<span class="dv">0</span>: batch}})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="mixing-cuda-graphs-with-torch.compile" class="level3">
+<h3 class="anchored" data-anchor-id="mixing-cuda-graphs-with-torch.compile">Mixing CUDA Graphs with <code>torch.compile</code></h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>stream <span class="op">=</span> torch.cuda.Stream()</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Warm-up outside the graph</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.cuda.stream(stream):</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> _ <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">3</span>):</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>        y <span class="op">=</span> compiled_model(x)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="co"># Capture</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>g <span class="op">=</span> torch.cuda.CUDAGraph()</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> torch.cuda.graph(g):</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    y <span class="op">=</span> compiled_model(x)</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Replay</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>g.replay()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="reducing-compilation-recompilation-time" class="level3">
+<h3 class="anchored" data-anchor-id="reducing-compilation-recompilation-time">Reducing Compilation / Recompilation Time</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Cache compiled artifacts to disk — avoids recompilation on restart</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch._inductor.config</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>torch._inductor.config.fx_graph_cache <span class="op">=</span> <span class="va">True</span>   <span class="co"># Inductor kernel cache</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Persist the Dynamo cache across runs</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="va">TORCHINDUCTOR_CACHE_DIR</span><span class="op">=</span>/tmp/inductor_cache <span class="ex">python</span> train.py</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="known-limitations-as-of-2025" class="level3">
+<h3 class="anchored" data-anchor-id="known-limitations-as-of-2025">Known Limitations (as of 2025)</h3>
+<ol type="1">
+<li><strong>DeepSpeed ZeRO</strong> — optimizer state sharding uses communication ops that Dynamo can’t graph-capture. Results in graph breaks or silent fallback to eager.</li>
+<li><strong>Gradient checkpointing</strong> — checkpointed modules fall back to eager mode silently.</li>
+</ol>
+<hr>
+</section>
+</section>
+<section id="torch.export" class="level2">
+<h2 class="anchored" data-anchor-id="torch.export"><code>torch.export</code></h2>
+<p><code>torch.export</code> produces a <strong>strict, fully-captured</strong> FX Graph suitable for deployment (no Python fallback):</p>
+<ul>
+<li><strong>Containers</strong> (dicts, lists of tensors) are burned in</li>
+<li><strong>Python constants</strong> are burned in</li>
+<li><strong><code>torch.tensor(...)</code> literals</strong> are <em>not</em> burned in — they become graph inputs</li>
+</ul>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> torch.export <span class="im">import</span> export, Dim</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>batch <span class="op">=</span> Dim(<span class="st">"batch"</span>, <span class="bu">min</span><span class="op">=</span><span class="dv">1</span>, <span class="bu">max</span><span class="op">=</span><span class="dv">256</span>)</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>exported_program <span class="op">=</span> export(model, (x,), dynamic_shapes<span class="op">=</span>{<span class="st">"x"</span>: {<span class="dv">0</span>: batch}})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>For models that use dataclasses as inputs:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>torch.export.register_dataclass(MyDataClass)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="images/export-graph-capture-principles.png" class="img-fluid figure-img" style="width:80.0%"></p>
+<figcaption>torch.export: principles of graph capture — safety vs.&nbsp;coverage trade-off between <code>torch.export</code> (strict, static) and <code>torch.trace</code> (lenient, dynamic)</figcaption>
+</figure>
+</div>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="images/export-container-specialization.png" class="img-fluid figure-img" style="width:85.0%"></p>
+<figcaption>torch.export container specialization: list/dict inputs get burned into the graph; <code>torch.export.register_dataclass</code> enables dataclass inputs</figcaption>
+</figure>
+</div>
+<hr>
+</section>
+<section id="case-studies" class="level2">
+<h2 class="anchored" data-anchor-id="case-studies">Case Studies</h2>
+<section id="case-study-i-compilation-failed" class="level3">
+<h3 class="anchored" data-anchor-id="case-study-i-compilation-failed">Case Study I — Compilation Failed</h3>
+<p>When <code>torch.compile</code> fails outright, the <code>TORCH_LOGS</code> environment variables are your primary diagnostic tool:</p>
+<table class="caption-top table">
+<thead>
+<tr class="header">
+<th>Goal</th>
+<th><code>TORCH_LOGS</code> value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Why is it recompiling?</td>
+<td><code>recompiles</code></td>
+</tr>
+<tr class="even">
+<td>Compilation stages</td>
+<td><code>compilation</code></td>
+</tr>
+<tr class="odd">
+<td>Generated FX graph</td>
+<td><code>graph_code</code></td>
+</tr>
+<tr class="even">
+<td>Final kernel code</td>
+<td><code>output_code</code></td>
+</tr>
+<tr class="odd">
+<td>Where tracing breaks</td>
+<td><code>graph_breaks</code></td>
+</tr>
+<tr class="even">
+<td>Guard conditions</td>
+<td><code>guards</code></td>
+</tr>
+<tr class="odd">
+<td>Performance hints</td>
+<td><code>perf_hints</code></td>
+</tr>
+<tr class="even">
+<td>Dynamic shape decisions</td>
+<td><code>dynamic</code></td>
+</tr>
+<tr class="odd">
+<td>Symbolic sizes in graph</td>
+<td><code>graph_sizes</code></td>
+</tr>
+<tr class="even">
+<td>AOT Autograd graphs</td>
+<td><code>aot_graphs</code></td>
+</tr>
+<tr class="odd">
+<td>Inductor optimization</td>
+<td><code>inductor</code></td>
+</tr>
+<tr class="even">
+<td>Inductor scheduling</td>
+<td><code>schedule</code></td>
+</tr>
+<tr class="odd">
+<td>Everything</td>
+<td><code>+dynamo,+inductor</code></td>
+</tr>
+</tbody>
+</table>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="va">TORCH_LOGS</span><span class="op">=</span>graph_breaks,guards <span class="ex">python</span> train.py</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="case-study-ii-compilation-succeeded-but-no-speedup-or-regression" class="level3">
+<h3 class="anchored" data-anchor-id="case-study-ii-compilation-succeeded-but-no-speedup-or-regression">Case Study II — Compilation Succeeded but No Speedup (or Regression)</h3>
+<p>Common root causes:</p>
+<ul>
+<li><strong>Too many graph breaks</strong> — the model is running as many small compiled subgraphs stitched together by eager Python; overhead exceeds benefit</li>
+<li><strong>Excessive recompilation</strong> — dynamic input shapes are triggering constant re-traces</li>
+<li><strong>Kernel launch latency dominates</strong> — model is bottlenecked on CPU launch overhead that Inductor/Triton doesn’t help with (here, add CUDA Graphs)</li>
+<li><strong>Compute-bound, already fast</strong> — large matmuls already max out GPU throughput; fusion provides no gain</li>
+</ul>
+<p>Diagnostic approach:</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="va">TORCH_LOGS</span><span class="op">=</span>perf_hints,recompiles <span class="ex">python</span> train.py <span class="dv">2</span><span class="op">&gt;&amp;</span><span class="dv">1</span> <span class="kw">|</span> <span class="fu">head</span> <span class="at">-100</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="case-study-iii-vllm" class="level3">
+<h3 class="anchored" data-anchor-id="case-study-iii-vllm">Case Study III — vLLM</h3>
+<p>vLLM uses <code>torch.compile</code> with PagedAttention and custom CUDA kernels. Key patterns:</p>
+<ul>
+<li>Custom ops registered via <code>torch.library</code> so Dynamo can trace through them</li>
+<li><code>dynamic=True</code> to handle variable-length sequences without recompilation</li>
+<li>CUDA Graph capture for the decode phase (static shape) for near-zero CPU overhead</li>
+<li>Separate compiled graphs for prefill (dynamic) vs decode (static) paths</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="torch.compile-vs-jax-xla" class="level2">
+<h2 class="anchored" data-anchor-id="torch.compile-vs-jax-xla"><code>torch.compile</code> vs JAX + XLA</h2>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>PyTorch + <code>torch.compile</code></th>
+<th>JAX + XLA</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Input IR</strong></td>
+<td>FX Graph (via Dynamo)</td>
+<td>HLO (High Level Operations)</td>
+</tr>
+<tr class="even">
+<td><strong>Lowering</strong></td>
+<td>FX → Schedule IR → Triton / C++</td>
+<td>HLO → Optimized HLO → LLVM IR / Device IR</td>
+</tr>
+<tr class="odd">
+<td><strong>Execution model</strong></td>
+<td>Eager + JIT</td>
+<td>Lazy (graph accumulation)</td>
+</tr>
+<tr class="even">
+<td><strong>Graph capture</strong></td>
+<td>Dynamo via bytecode analysis</td>
+<td>Trace-based (<code>jax.jit</code>)</td>
+</tr>
+<tr class="odd">
+<td><strong>Compilation trigger</strong></td>
+<td>First execution + guard violation</td>
+<td>Explicit <code>mark_step()</code> / <code>jit</code> decoration</td>
+</tr>
+<tr class="even">
+<td><strong>Operator fusion</strong></td>
+<td>Vertical + horizontal fusion</td>
+<td>Aggressive multi-output fusion, cross control-flow</td>
+</tr>
+<tr class="odd">
+<td><strong>Memory layout</strong></td>
+<td>Basic optimization</td>
+<td>Aggressive layout transforms (NCHW → NHWC)</td>
+</tr>
+<tr class="even">
+<td><strong>Algebraic simplifications</strong></td>
+<td>Pattern matching</td>
+<td>Deep algebraic rewrites, constant folding</td>
+</tr>
+<tr class="odd">
+<td><strong>Key strength</strong></td>
+<td>Hide latency (HBM load), vector units, comms behind MXUs</td>
+<td>Cost model via OpenXLA / MLIR dialect stack</td>
+</tr>
+</tbody>
+</table>
+<p>XLA uses <strong>MLIR</strong> to define multiple dialects at different abstraction levels and progressively lowers between them — enabling deep fusion and aggressive memory layout transformations that Inductor doesn’t yet match. PyTorch’s advantage is the flexibility of staying in Python with optional compilation.</p>
+<hr>
+</section>
+<section id="references" class="level2">
+<h2 class="anchored" data-anchor-id="references">References</h2>
+<ol type="1">
+<li><a href="https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_overview.html">Dynamo Overview — PyTorch docs</a></li>
+<li><a href="https://github.com/pytorch/torchdynamo/blob/be390ec752f540c13c116a1d04078fd577a26690/torchinductor/scheduler.py#L826">inductor/scheduler.py — <code>can_fuse()</code> / <code>score_fuse()</code> cost model</a></li>
+<li><a href="https://docs.pytorch.org/docs/stable/torch.compiler_dynamo_deepdive.html">Dynamo Deep-Dive — PyTorch docs</a></li>
+<li><a href="https://docs.pytorch.org/docs/stable/torch.compiler_cudagraph_trees.html">CUDAGraph Trees — PyTorch docs</a></li>
+<li>PyTorch 2 paper — <em>Faster Machine Learning Through Dynamic Python Bytecode Transformation and Graph Compilation</em></li>
+<li><a href="https://www.youtube.com/watch?v=1wV1ESbGrVQ">Blazing Fast GenAI Inference With torch.compile — Richard Zou, Meta</a></li>
+</ol>
+
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    // Ensure there is a toggle, if there isn't float one in the top right
+    if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+      const a = window.document.createElement('a');
+      a.classList.add('top-right');
+      a.classList.add('quarto-color-scheme-toggle');
+      a.href = "";
+      a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+      const i = window.document.createElement("i");
+      i.classList.add('bi');
+      a.appendChild(i);
+      window.document.body.appendChild(a);
+    }
+    setColorSchemeToggle(hasAlternateSentinel())
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/sarthak10193\.github\.io");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+<input type="hidden" id="giscus-base-theme" value="light">
+<input type="hidden" id="giscus-alt-theme" value="dark">
+<script>
+  function loadGiscus() {
+    // Function to get the theme based on body class
+    const getTheme = () => {
+      let baseTheme = document.getElementById('giscus-base-theme').value;
+      let altTheme = document.getElementById('giscus-alt-theme').value;
+      if (authorPrefersDark) {
+          [baseTheme, altTheme] = [altTheme, baseTheme];
+      }
+      return document.body.classList.contains('quarto-dark') ? altTheme : baseTheme;
+    };
+    const script = document.createElement("script");
+    script.src = "https://giscus.app/client.js";
+    script.async = true;
+    script.dataset.repo = "sarthak10193/sarthak10193.github.io";
+    script.dataset.repoId = "";
+    script.dataset.category = "Announcements";
+    script.dataset.categoryId = "";
+    script.dataset.mapping = "pathname";
+    script.dataset.reactionsEnabled = "1";
+    script.dataset.emitMetadata = "0";
+    script.dataset.inputPosition = "top";
+    script.dataset.theme = getTheme();
+    script.dataset.lang = "en";
+    script.crossOrigin = "anonymous";
+    // Append the script to the desired div instead of at the end of the body
+    document.getElementById("quarto-content").appendChild(script);
+  }
+  loadGiscus();
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">
+<p>© 2026 Sarthak Arora · Built with <a href="https://quarto.org">Quarto</a></p>
+</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+
+</body></html>

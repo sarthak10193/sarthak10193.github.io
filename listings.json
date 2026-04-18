@@ -1,0 +1,9 @@
+[
+  {
+    "listing": "/index.html",
+    "items": [
+      "/posts/nvidia-gpu-generations/index.html",
+      "/posts/torch-compile/index.html"
+    ]
+  }
+]

@@ -1,0 +1,114 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Sarthak Arora",
+    "section": "",
+    "text": "NVIDIA GPU Generations: A Hardware Progression\n\n\n\nCUDA\n\nGPU\n\nHardware\n\n\n\nHow each GPU generation from Volta to Blackwell changed the memory pipeline, compute primitives, and synchronization model for deep learning workloads.\n\n\n\n\n\nApr 16, 2026\n\n2 min\n\n\n\n\n\n\ntorch.compile — A Manual\n\n\n\nPyTorch\n\nCompiler\n\nCUDA\n\nPerformance\n\n\n\nA deep dive into how torch.compile works under the hood: Dynamo, FX graphs, guards, graph breaks, CUDA graph integration, best practices, and case studies.\n\n\n\n\n\nApr 16, 2026\n\n9 min\n\n\n\n\nNo matching items"
+  },
+  {
+    "objectID": "posts/nvidia-gpu-generations/index.html",
+    "href": "posts/nvidia-gpu-generations/index.html",
+    "title": "NVIDIA GPU Generations: A Hardware Progression",
+    "section": "",
+    "text": "Tensor Cores were introduced, decoupling GEMM arithmetic from the general-purpose (CUDA cores) computational pipeline. A new 4×4 dedicated hardware unit for performing FMAs could be targeted using the wmma::mma_sync() instruction. This single instruction could do 64 FMAs, what would have earlier taken 64 individual scalar instructions.\nHowever, data movement was still general — threads would use ld.global → ld.shared to load GMEM to SMEM and then get blocked on __syncthreads() waiting for the copy to finish. Warps would sit idle. Every word was manually shuttled from GMEM to SMEM through registers, one load/store at a time."
+  },
+  {
+    "objectID": "posts/nvidia-gpu-generations/index.html#volta",
+    "href": "posts/nvidia-gpu-generations/index.html#volta",
+    "title": "NVIDIA GPU Generations: A Hardware Progression",
+    "section": "",
+    "text": "Tensor Cores were introduced, decoupling GEMM arithmetic from the general-purpose (CUDA cores) computational pipeline. A new 4×4 dedicated hardware unit for performing FMAs could be targeted using the wmma::mma_sync() instruction. This single instruction could do 64 FMAs, what would have earlier taken 64 individual scalar instructions.\nHowever, data movement was still general — threads would use ld.global → ld.shared to load GMEM to SMEM and then get blocked on __syncthreads() waiting for the copy to finish. Warps would sit idle. Every word was manually shuttled from GMEM to SMEM through registers, one load/store at a time."
+  },
+  {
+    "objectID": "posts/nvidia-gpu-generations/index.html#ampere-a100",
+    "href": "posts/nvidia-gpu-generations/index.html#ampere-a100",
+    "title": "NVIDIA GPU Generations: A Hardware Progression",
+    "section": "Ampere (A100)",
+    "text": "Ampere (A100)\nAmpere added the cp.async instruction family, which is essentially a kernel-side interface to the DMA engine. This allowed true pipelining of the GEMM mainloop. In Volta, every warp had to stall on __syncthreads(), leaving SMs heavily underutilized.\nWith cp.async, threads issue the copy and immediately return control — data transfer is offloaded to a dedicated DMA engine. cuda::pipeline + pipe.consumer_wait() replaces the block-wide __syncthreads(). You wait only on the specific SMEM slot you’re about to consume, not on the entire block. This allows pipelining the GEMM mainloop (stage=2 or stage=3): while prefetching data for \\(k+1\\) and \\(k+2\\), the \\(k\\)-th tile can run GEMM.\n\n\n\nVolta relies on __syncthreads() and idle warps; Ampere’s cp.async offloads copies to a DMA engine, enabling a pipelined GEMM mainloop"
+  },
+  {
+    "objectID": "posts/nvidia-gpu-generations/index.html#hopper-h100-h200",
+    "href": "posts/nvidia-gpu-generations/index.html#hopper-h100-h200",
+    "title": "NVIDIA GPU Generations: A Hardware Progression",
+    "section": "Hopper (H100, H200)",
+    "text": "Hopper (H100, H200)\nHopper introduced TMA (Tensor Memory Accelerator) and wgmma as the new compute and memory primitives.\nTMA is a hardware unit that takes a tensor descriptor and handles the entire GMEM→SMEM transfer autonomously — no per-thread address computation, no register pressure. One instruction issues the bulk async copy for a whole tile.\nmbarrier is the new synchronization primitive that lives in SMEM:\n\nmbarrier.init — set up the barrier object in SMEM and define the expected arrival count\nmbarrier.arrive — signal arrival\nmbarrier.complete_tx — TMA hardware signals async completion when the DMA actually finishes\n\nSMEM Double Buffering:\n\n\n\nBuffer\nPurpose\n\n\n\n\nBuffer 1\nActive tile being consumed by wgmma\n\n\nBuffer 2\nNext tile being loaded by TMA\n\n\n\n\n\n\nHopper’s TMA signals mbarrier.complete_tx on DMA completion, decoupling data arrival from warp synchronization. SMEM double-buffering keeps wgmma busy while TMA loads the next tile."
+  },
+  {
+    "objectID": "posts/nvidia-gpu-generations/index.html#blackwell",
+    "href": "posts/nvidia-gpu-generations/index.html#blackwell",
+    "title": "NVIDIA GPU Generations: A Hardware Progression",
+    "section": "Blackwell",
+    "text": "Blackwell\nComing soon."
+  },
+  {
+    "objectID": "posts/torch-compile/index.html",
+    "href": "posts/torch-compile/index.html",
+    "title": "torch.compile — A Manual",
+    "section": "",
+    "text": "Dynamo captures the FX graph; Inductor lowers it to Triton/C++\n\n\nPyTorch’s eager mode is flexible and debuggable, but it pays a price: every op goes through the Python interpreter, tensor dispatch, and kernel launch one at a time. torch.compile closes the gap with JAX/XLA-style ahead-of-time compilation — without giving up Python dynamism.\n\nJIT note: Triton has CPU overhead per launch; CUDA Graphs help here. But Triton now also supports AOT kernels, making CUDA Graphs less necessary for pure-Triton workloads. torch.compile sits above all of this.\n\nRelated questions it addresses:\n\nWhen can ops be fused?\nHow do graph breaks affect performance?\nHow does it compare to JAX + XLA?"
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#why-torch.compile",
+    "href": "posts/torch-compile/index.html#why-torch.compile",
+    "title": "torch.compile — A Manual",
+    "section": "",
+    "text": "Dynamo captures the FX graph; Inductor lowers it to Triton/C++\n\n\nPyTorch’s eager mode is flexible and debuggable, but it pays a price: every op goes through the Python interpreter, tensor dispatch, and kernel launch one at a time. torch.compile closes the gap with JAX/XLA-style ahead-of-time compilation — without giving up Python dynamism.\n\nJIT note: Triton has CPU overhead per launch; CUDA Graphs help here. But Triton now also supports AOT kernels, making CUDA Graphs less necessary for pure-Triton workloads. torch.compile sits above all of this.\n\nRelated questions it addresses:\n\nWhen can ops be fused?\nHow do graph breaks affect performance?\nHow does it compare to JAX + XLA?"
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#torch.compile-under-the-hood",
+    "href": "posts/torch-compile/index.html#torch.compile-under-the-hood",
+    "title": "torch.compile — A Manual",
+    "section": "torch.compile Under the Hood",
+    "text": "torch.compile Under the Hood\nThe compiler pipeline has three logical stages: Get-In (trace Python), Manipulate (rewrite the graph), and Be-ware (pitfalls).\n\nI — Get-In: Hooking into CPython\nCPython is both a compiler (to bytecode) and an interpreter (of that bytecode), frame by frame.\nA Frame (PyFrameObject) is a snapshot of a function’s state:\n\nThe bytecode itself\nNamespaces — local and global variables\nThe execution stack\nException state\nBuilt-ins (print, len)\nTrace/debug hooks\n\nPEP 523 exposes an API for a custom per-function interpreter. If one is installed, CPython will use it instead of the default. Dynamo leverages exactly this API: it defines a new interpreter that traces all PyTorch op calls and builds an FX graph as your code executes.\nPyFrameObject (default eval) → PatchedPyFrameObject (Dynamo's eval)\nThe @torch.compile decorator’s only job is to install the scaffolding that passes bytecode, args, and globals to Dynamo on the first call. @torch.compile does not compile anything itself.\n\n\n\nDefault CPython frame evaluation (left) vs TorchDynamo’s patched frame evaluation with guards and FX graph capture (right)\n\n\n\nFX Graph\ntorch.fx traces your model symbolically and produces an FX Graph — a pure Python data structure representing the computation as a DAG of nodes. This is the IR that flows into the rest of the compiler:\nPython source → Dynamo bytecode analysis → FX Graph → AOTAutograd → Inductor → Triton / C++\ntorch.export also produces an FX Graph, but via a stricter trace that bakes in shapes and constants (more on this below).\n\n\nGuards — Making Dynamo Resilient\nEvery time Dynamo traces a function it attaches guards to the compiled artifact: checks on shapes, dtypes, values, and Python object identity that must hold for the compiled version to be reused.\nWhen a guard is violated:\n\nRuntime overhead — every call checks all guards\nRecompilation — if a guard fails, Dynamo re-traces\n\nTorch Compile adds guards for every user-accessible attribute. Use tlparse (or TORCH_LOGS=guards) to inspect guard overhead.\n\n\nDynamic Shapes & Recompilation\nGuards + recompilation are the two main contributors to torch.compile being slower than eager in pathological cases. Understanding this lets you diagnose and eliminate the overhead.\n\n\n\n\n\n\n\nAPI\nEffect\n\n\n\n\ntorch.compile(dynamic=True)\nDynamo uses symbolic integers for shapes; fewer recompilations\n\n\ntorch.export(..., dynamic_shapes=...)\nExplicit shape constraints at export time\n\n\ntorch._dynamo.mark_dynamic(x, dim=0)\nMark a specific tensor dimension as dynamic\n\n\n\n\n\n\n\nII — Manipulate: Bytecode Manipulation\nDynamo doesn’t parse Python source — it works at the bytecode level. It walks co_code, intercepts CALL_FUNCTION / CALL_METHOD / LOAD_ATTR instructions that touch torch.Tensor objects, and emits graph nodes for each one. Non-Torch code (pure Python logic) passes through unchanged or causes a graph break.\n\n\n\nIII — Be-ware: Graph Breaks & Recompilation\n\nGraph Breaks\nA graph break occurs when Dynamo encounters code it cannot represent in an FX Graph. It ends the current subgraph, lets the Python interpreter handle that piece, and starts a new subgraph afterwards.\nCommon causes:\n\nData-dependent control flow — Python if/else where the condition depends on tensor values. Fix: use torch.cond(), torch.where(), or restructure.\n.item(), .tolist() — require a CPU↔︎GPU sync, forcing a break.\nprint() statements inside compiled code.\nCustom ops (CUDA kernels, CUTLASS, user-defined Triton kernels) — Dynamo treats them as opaque callables.\n\n\n\n\nGraph breaks split the Python function into compiled regions separated by eager interpreter calls; the modified bytecode shows the COMPILED REGION / GRAPH BREAK / RESUME POINT structure\n\n\n# Forces a graph break — data-dependent branch\nif x.sum() &gt; 0:\n    y = x * 2\nelse:\n    y = x * -1\n\n# Graph-friendly alternative\ny = torch.where(x.sum() &gt; 0, x * 2, x * -1)\nUse torch.compile(full_graph=True) to make Dynamo error out on any graph break — it will tell you exactly where.\n\n\nRecompilation\nDynamo captures separate graphs for forward and backward passes. The forward FX Graph is used by AOTAutograd to generate the compiled backward. Each forward graph has its own backward counterpart.\nThe backend is Inductor, which lowers the FX Graph to:\n\nTriton (default GPU backend) — generates fused CUDA kernels\nC++ (CPU backend)\n\nUnder dynamic shapes, Dynamo uses Sympy for symbolic shape arithmetic, allowing a single compiled artifact to handle multiple shapes without recompilation.\n\n\n\n\n\n\nTip\n\n\n\nInstead of torch.tensor() + 5 (constant scalar), prefer torch.tensor() + torch.tensor(5) to avoid shape-triggered recompilation."
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#torch.compile-cuda-graphs",
+    "href": "posts/torch-compile/index.html#torch.compile-cuda-graphs",
+    "title": "torch.compile — A Manual",
+    "section": "torch.compile + CUDA Graphs",
+    "text": "torch.compile + CUDA Graphs\nThese two are complementary, not alternatives.\ntorch.compile is a compiler infrastructure: it traces your PyTorch code, generates an FX graph, lowers it through Inductor (defaulting to Triton), and produces optimized kernels with operator fusion.\nCUDA Graphs solve a different problem: CPU-side kernel launch latency. Once the GPU work is captured into a graph, the CPU replays it with a single call instead of launching kernels one by one.\nCombined workflow:\n\ntorch.compile your model — possibly into multiple subgraphs if there are graph breaks\nWrap the compiled model (+ optimizer step, etc.) in a CUDA Graph capture\nResult: fused Triton kernels running with near-zero CPU overhead\n\n# mode=\"reduce-overhead\" enables CUDA Graphs automatically\nmodel = torch.compile(model, mode=\"reduce-overhead\")\n\n# PyTorch handles the graph capture transparently on the first few iterations\n# and replays on all subsequent calls\n\n\n\n\n\n\nNote\n\n\n\nreduce-overhead mode tries to use CUDA Graphs automatically, but it has constraints: no input mutations, static memory layout, limited graph dynamism. You may need to tweak your model slightly to be CUDA Graph-compatible."
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#best-practices",
+    "href": "posts/torch-compile/index.html#best-practices",
+    "title": "torch.compile — A Manual",
+    "section": "Best Practices",
+    "text": "Best Practices\n\nFull Graph & Avoiding Graph Breaks\n\nUse full_graph=True during debugging to surface breaks immediately\nReplace Python control flow with graph-friendly ops: torch.where, torch.cond\nAvoid .item(), .numpy(), .tolist() inside hot paths\nCustom ops show up as opaque callables — wrap them with torch.library if you want Dynamo to trace through them\n\n\n\nHandling Dynamic Shapes\n# Option 1: tell compile the shapes are dynamic\nmodel = torch.compile(model, dynamic=True)\n\n# Option 2: mark specific dimensions as dynamic\ntorch._dynamo.mark_dynamic(x, 0)   # batch dimension is dynamic\n\n# Option 3: use torch.export with explicit constraints\nfrom torch.export import Dim\nbatch = Dim(\"batch\", min=1, max=256)\nexported = torch.export.export(model, (x,), dynamic_shapes={\"x\": {0: batch}})\n\n\nMixing CUDA Graphs with torch.compile\nimport torch\n\nstream = torch.cuda.Stream()\n# Warm-up outside the graph\nwith torch.cuda.stream(stream):\n    for _ in range(3):\n        y = compiled_model(x)\n\n# Capture\ng = torch.cuda.CUDAGraph()\nwith torch.cuda.graph(g):\n    y = compiled_model(x)\n\n# Replay\ng.replay()\n\n\nReducing Compilation / Recompilation Time\n# Cache compiled artifacts to disk — avoids recompilation on restart\nimport torch._inductor.config\ntorch._inductor.config.fx_graph_cache = True   # Inductor kernel cache\n# Persist the Dynamo cache across runs\nTORCHINDUCTOR_CACHE_DIR=/tmp/inductor_cache python train.py\n\n\nKnown Limitations (as of 2025)\n\nDeepSpeed ZeRO — optimizer state sharding uses communication ops that Dynamo can’t graph-capture. Results in graph breaks or silent fallback to eager.\nGradient checkpointing — checkpointed modules fall back to eager mode silently."
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#torch.export",
+    "href": "posts/torch-compile/index.html#torch.export",
+    "title": "torch.compile — A Manual",
+    "section": "torch.export",
+    "text": "torch.export\ntorch.export produces a strict, fully-captured FX Graph suitable for deployment (no Python fallback):\n\nContainers (dicts, lists of tensors) are burned in\nPython constants are burned in\ntorch.tensor(...) literals are not burned in — they become graph inputs\n\nfrom torch.export import export, Dim\n\nbatch = Dim(\"batch\", min=1, max=256)\nexported_program = export(model, (x,), dynamic_shapes={\"x\": {0: batch}})\nFor models that use dataclasses as inputs:\ntorch.export.register_dataclass(MyDataClass)\n\n\n\ntorch.export: principles of graph capture — safety vs. coverage trade-off between torch.export (strict, static) and torch.trace (lenient, dynamic)\n\n\n\n\n\ntorch.export container specialization: list/dict inputs get burned into the graph; torch.export.register_dataclass enables dataclass inputs"
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#case-studies",
+    "href": "posts/torch-compile/index.html#case-studies",
+    "title": "torch.compile — A Manual",
+    "section": "Case Studies",
+    "text": "Case Studies\n\nCase Study I — Compilation Failed\nWhen torch.compile fails outright, the TORCH_LOGS environment variables are your primary diagnostic tool:\n\n\n\nGoal\nTORCH_LOGS value\n\n\n\n\nWhy is it recompiling?\nrecompiles\n\n\nCompilation stages\ncompilation\n\n\nGenerated FX graph\ngraph_code\n\n\nFinal kernel code\noutput_code\n\n\nWhere tracing breaks\ngraph_breaks\n\n\nGuard conditions\nguards\n\n\nPerformance hints\nperf_hints\n\n\nDynamic shape decisions\ndynamic\n\n\nSymbolic sizes in graph\ngraph_sizes\n\n\nAOT Autograd graphs\naot_graphs\n\n\nInductor optimization\ninductor\n\n\nInductor scheduling\nschedule\n\n\nEverything\n+dynamo,+inductor\n\n\n\nTORCH_LOGS=graph_breaks,guards python train.py\n\n\nCase Study II — Compilation Succeeded but No Speedup (or Regression)\nCommon root causes:\n\nToo many graph breaks — the model is running as many small compiled subgraphs stitched together by eager Python; overhead exceeds benefit\nExcessive recompilation — dynamic input shapes are triggering constant re-traces\nKernel launch latency dominates — model is bottlenecked on CPU launch overhead that Inductor/Triton doesn’t help with (here, add CUDA Graphs)\nCompute-bound, already fast — large matmuls already max out GPU throughput; fusion provides no gain\n\nDiagnostic approach:\nTORCH_LOGS=perf_hints,recompiles python train.py 2&gt;&1 | head -100\n\n\nCase Study III — vLLM\nvLLM uses torch.compile with PagedAttention and custom CUDA kernels. Key patterns:\n\nCustom ops registered via torch.library so Dynamo can trace through them\ndynamic=True to handle variable-length sequences without recompilation\nCUDA Graph capture for the decode phase (static shape) for near-zero CPU overhead\nSeparate compiled graphs for prefill (dynamic) vs decode (static) paths"
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#torch.compile-vs-jax-xla",
+    "href": "posts/torch-compile/index.html#torch.compile-vs-jax-xla",
+    "title": "torch.compile — A Manual",
+    "section": "torch.compile vs JAX + XLA",
+    "text": "torch.compile vs JAX + XLA\n\n\n\n\n\n\n\n\n\nPyTorch + torch.compile\nJAX + XLA\n\n\n\n\nInput IR\nFX Graph (via Dynamo)\nHLO (High Level Operations)\n\n\nLowering\nFX → Schedule IR → Triton / C++\nHLO → Optimized HLO → LLVM IR / Device IR\n\n\nExecution model\nEager + JIT\nLazy (graph accumulation)\n\n\nGraph capture\nDynamo via bytecode analysis\nTrace-based (jax.jit)\n\n\nCompilation trigger\nFirst execution + guard violation\nExplicit mark_step() / jit decoration\n\n\nOperator fusion\nVertical + horizontal fusion\nAggressive multi-output fusion, cross control-flow\n\n\nMemory layout\nBasic optimization\nAggressive layout transforms (NCHW → NHWC)\n\n\nAlgebraic simplifications\nPattern matching\nDeep algebraic rewrites, constant folding\n\n\nKey strength\nHide latency (HBM load), vector units, comms behind MXUs\nCost model via OpenXLA / MLIR dialect stack\n\n\n\nXLA uses MLIR to define multiple dialects at different abstraction levels and progressively lowers between them — enabling deep fusion and aggressive memory layout transformations that Inductor doesn’t yet match. PyTorch’s advantage is the flexibility of staying in Python with optional compilation."
+  },
+  {
+    "objectID": "posts/torch-compile/index.html#references",
+    "href": "posts/torch-compile/index.html#references",
+    "title": "torch.compile — A Manual",
+    "section": "References",
+    "text": "References\n\nDynamo Overview — PyTorch docs\ninductor/scheduler.py — can_fuse() / score_fuse() cost model\nDynamo Deep-Dive — PyTorch docs\nCUDAGraph Trees — PyTorch docs\nPyTorch 2 paper — Faster Machine Learning Through Dynamic Python Bytecode Transformation and Graph Compilation\nBlazing Fast GenAI Inference With torch.compile — Richard Zou, Meta"
+  },
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "I work on ML infrastructure, GPU programming, and distributed systems.\nThese posts are my notes — things I found interesting, confusing, or worth writing down carefully. Topics include CUDA kernels, quantization, attention mechanisms, distributed training, and systems design for ML."
+  }
+]

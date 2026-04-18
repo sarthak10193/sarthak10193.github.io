@@ -1,0 +1,33 @@
+/* ── Inline code ──────────────────────────────────────────────────────────── */
+/* Fix dark-theme inline code: readable background, no harsh contrast        */
+p code, li code, td code, th code, h1 code, h2 code, h3 code, h4 code {
+  background-color: rgba(130, 80, 255, 0.12) !important;
+  color: #c792ea !important;
+  border: 1px solid rgba(130, 80, 255, 0.25);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.88em;
+}
+
+/* Light mode override */
+[data-bs-theme="light"] p code,
+[data-bs-theme="light"] li code,
+[data-bs-theme="light"] td code,
+[data-bs-theme="light"] th code {
+  background-color: #f0f0f5 !important;
+  color: #6b21a8 !important;
+  border: 1px solid #d8b4fe;
+}
+
+/* ── Images ───────────────────────────────────────────────────────────────── */
+/* Prevent small images from being stretched; keep them crisp                */
+.quarto-figure img,
+article img {
+  max-width: 100%;
+  width: auto !important;
+  height: auto;
+  display: block;
+  margin: 1.5rem auto;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
